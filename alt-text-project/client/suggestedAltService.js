@@ -80,8 +80,8 @@ function createMockSuggestedAltService() {
 /**
  * Create a client for the real suggested-alt backend.
  *
- * The backend expects an absolute image URL because it resolves the image
- * bytes itself before sending them to the vision model.
+ * The backend accepts either an absolute image URL or an explicit Base64 image
+ * payload. URL analysis supplies the latter after acquiring pixels client-side.
  */
 function createBackendSuggestedAltService({
   baseUrl = process.env.ALT_BACKEND_URL || 'http://localhost:3001',
@@ -94,15 +94,15 @@ function createBackendSuggestedAltService({
 
   const endpoint = `${baseUrl.replace(/\/$/, '')}/api/suggest-alt`
 
-  async function suggestAltTextFromBackend(issue) {
+  async function suggestAltTextFromBackend(issue, { image } = {}) {
     if (!issue || typeof issue !== 'object') {
       throw new TypeError('An image issue is required.')
     }
 
     const src = issue.context?.src
-    let image
+    let requestImage = image
     try {
-      image = { type: 'url', value: new URL(src).toString() }
+      if (!requestImage) requestImage = { type: 'url', value: new URL(src).toString() }
     } catch {
       if (!imageBaseDir || typeof src !== 'string' || !src.trim()) {
         throw new Error(`The image source must be an absolute URL: ${src || '(missing)'}`)
@@ -120,7 +120,7 @@ function createBackendSuggestedAltService({
         throw new Error(`Unsupported local image type: ${src}`)
       }
 
-      image = {
+      requestImage = {
         type: 'base64',
         mimeType,
         value: fs.readFileSync(resolvedPath).toString('base64'),
@@ -133,7 +133,7 @@ function createBackendSuggestedAltService({
       body: JSON.stringify({
         type: 'missing-alt',
         context: issue.context || {},
-        image,
+        image: requestImage,
       }),
     })
 
@@ -145,8 +145,8 @@ function createBackendSuggestedAltService({
     return typeof payload.suggestedAlt === 'string' ? payload.suggestedAlt : null
   }
 
-  async function suggestAltForIssueFromBackend(issue) {
-    return { ...issue, suggestedAlt: await suggestAltTextFromBackend(issue) }
+  async function suggestAltForIssueFromBackend(issue, options) {
+    return { ...issue, suggestedAlt: await suggestAltTextFromBackend(issue, options) }
   }
 
   async function suggestAltTextsFromBackend(issues) {

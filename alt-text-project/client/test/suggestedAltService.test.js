@@ -73,3 +73,19 @@ test('sends relative local images as base64 to the backend', async () => {
   assert.equal(request.body.image.mimeType, 'image/webp')
   assert.ok(request.body.image.value.length > 0)
 })
+
+test('sends an explicitly supplied base64 image payload unchanged', async () => {
+  let request
+  const service = createBackendSuggestedAltService({
+    fetchImpl: async (url, options) => {
+      request = { url, body: JSON.parse(options.body) }
+      return { ok: true, status: 200, json: async () => ({ suggestedAlt: null }) }
+    },
+  })
+  const issue = { context: { src: 'http://127.0.0.1:8080/source/test-image.webp' } }
+  const image = { type: 'base64', mimeType: 'image/webp', value: Buffer.from('pixels').toString('base64') }
+
+  assert.equal(await service.suggestAltText(issue, { image }), null)
+  assert.deepEqual(request.body.image, image)
+  assert.equal(request.body.context.src, issue.context.src)
+})
